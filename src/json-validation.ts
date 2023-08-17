@@ -6,6 +6,7 @@ import { joinWithOr } from "./utils/formatting";
 import { JSONPointerData } from "./types";
 import { parseJSONDocumentState } from "./utils/parseJSONDocument";
 import { RequiredPick } from "./types";
+import { el } from "./utils/dom";
 
 // return an object path that matches with the json-source-map pointer
 const getErrorPath = (error: JsonError): string => {
@@ -59,26 +60,33 @@ export class JSONValidation {
     this.schema = new Draft04(schema);
   }
   private get schemaTitle() {
-    return this.schema.getSchema().title ?? "json-schema";
+    return this.schema.getSchema()?.title ?? "json-schema";
   }
 
   // rewrite the error message to be more human readable
   private rewriteError = (error: JsonError): string => {
     if (error.code === "one-of-error") {
+      console.log("raw", error?.data?.received);
       return `Expected one of ${joinWithOr(
         error?.data?.errors,
         (data) => data.data.expected
       )}`;
     }
     if (error.code === "type-error") {
-      return `Expected \`${
+      console.log("raw", error?.data?.received);
+      return `Expected <code>${
         error?.data?.expected && Array.isArray(error?.data?.expected)
           ? joinWithOr(error?.data?.expected)
           : error?.data?.expected
-      }\` but received \`${error?.data?.received}\``;
+      }</code> but received <code>${error?.data?.received}</code>`;
     }
-    const message = error.message.replaceAll("#/", "").replaceAll("/", ".");
-
+    const message = error.message
+      // don't mention root object
+      .replaceAll("in `#` ", "")
+      .replaceAll("/", ".")
+      .replaceAll("#.", "")
+      // replace backticks with <code> tags
+      .replaceAll(/`([^`]*)`/gm, "<code>$1</code>");
     return message;
   };
 
@@ -100,6 +108,7 @@ export class JSONValidation {
     if (!errors.length) return [];
     // reduce() because we want to filter out errors that don't have a pointer
     return errors.reduce((acc, error) => {
+      console.log(this.rewriteError(error));
       const errorPath = getErrorPath(error);
       const pointer = json.pointers.get(errorPath) as JSONPointerData;
       if (pointer) {
@@ -108,9 +117,12 @@ export class JSONValidation {
         acc.push({
           from: isPropertyError ? pointer.keyFrom : pointer.valueFrom,
           to: isPropertyError ? pointer.keyTo : pointer.valueTo,
-          // TODO: create a domnode and replace `` with <code></code>
-          // renderMessage: () => error.message,
           message: this.rewriteError(error),
+          renderMessage: () => {
+            const dom = el("div", {});
+            dom.innerHTML = this.rewriteError(error);
+            return dom;
+          },
           severity: "error",
           source: this.schemaTitle,
         });

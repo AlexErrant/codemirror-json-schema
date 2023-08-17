@@ -11,19 +11,23 @@ const getErrors = (jsonString: string, schema?: JSONSchema7) => {
   const view = new EditorView({ doc: jsonString, extensions: [json()] });
   return new JSONValidation(schema || testSchema).doValidation(view);
 };
+
+const common = {
+  severity: "error" as Diagnostic["severity"],
+  source: "json-schema",
+};
+
 const expectErrors = (
   jsonString: string,
   errors: [from: number, to: number, message: string][],
   schema?: JSONSchema7
 ) => {
-  expect(getErrors(jsonString, schema)).toEqual(
+  const filteredErrors = getErrors(jsonString, schema).map(
+    ({ renderMessage, ...error }) => error
+  );
+  expect(filteredErrors).toEqual(
     errors.map(([from, to, message]) => ({ ...common, from, to, message }))
   );
-};
-
-const common = {
-  severity: "error" as Diagnostic["severity"],
-  source: "json-schema",
 };
 
 describe("json-validation", () => {
@@ -34,7 +38,7 @@ describe("json-validation", () => {
   });
   it("should provide range for an unknown key error", () => {
     expectErrors('{"foo": "example", "bar": 123}', [
-      [19, 24, "Additional property `bar` in `#` is not allowed"],
+      [19, 24, "Additional property `bar` is not allowed"],
     ]);
   });
   it("should not handle invalid json", () => {
@@ -46,7 +50,7 @@ describe("json-validation", () => {
         "foo": "example",
     "bar": "something else"
   }`,
-      [[32, 37, "Additional property `bar` in `#` is not allowed"]]
+      [[32, 37, "Additional property `bar` is not allowed"]]
     );
   });
   it("should provide formatted error message for oneOf fields with more than 2 items", () => {
@@ -65,7 +69,7 @@ describe("json-validation", () => {
         "foo": "example",
     "oneOfEg2": 123
   }`,
-      [[44, 47, 'Expected one of `"string"` or `"array"`']],
+      [[44, 47, "Expected one of <code>string</code> or <code>array</code>"]],
       testSchema2
     );
   });

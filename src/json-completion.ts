@@ -17,10 +17,9 @@ import {
   stripSurroundingQuotes,
   getNodeAtPosition,
 } from "./utils/node";
-import { Draft07, JsonError } from "json-schema-library";
+import { Draft07, JsonError, isJsonError } from "json-schema-library";
 import { jsonPointerForPosition } from "./utils/jsonPointers";
 import { TOKENS } from "./constants";
-import getSchema from "./utils/schema-lib/getSchema";
 
 function json5PropertyInsertSnippet(rawWord: string, value: string) {
   if (rawWord.startsWith('"')) {
@@ -683,7 +682,10 @@ export class JSONCompletion {
   ): JSONSchema7Definition[] {
     const draft = new Draft07(this.schema);
     let pointer = jsonPointerForPosition(ctx.state, ctx.pos);
-    let subSchema = getSchema(draft, pointer);
+    let subSchema = draft.getSchema({ pointer });
+    if (isJsonError(subSchema)) {
+      subSchema = subSchema.data?.schema;
+    }
     // if we don't have a schema for the current pointer, try the parent pointer
     if (
       !subSchema ||
@@ -692,7 +694,7 @@ export class JSONCompletion {
       subSchema.type === "undefined"
     ) {
       pointer = pointer.replace(/\/[^/]*$/, "/");
-      subSchema = getSchema(draft, pointer);
+      subSchema = draft.getSchema({ pointer });
     }
 
     debug.log("xxx", "pointer..", JSON.stringify(pointer));
@@ -703,8 +705,7 @@ export class JSONCompletion {
     }
     // const subSchema = new Draft07(this.schema).getSchema(pointer);
     debug.log("xxx", "subSchema..", subSchema);
-
-    if (this.isJsonError(subSchema)) {
+    if (!subSchema) {
       return [];
     }
 
@@ -728,10 +729,6 @@ export class JSONCompletion {
     }
 
     return [subSchema as JSONSchema7];
-  }
-
-  isJsonError(d: JSONSchema7 | JsonError): d is JsonError {
-    return d.type === "error";
   }
 
   private expandSchemaProperty(
